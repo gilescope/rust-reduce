@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with rust-reduce.  If not, see <https://www.gnu.org/licenses/>.
 
-/// Try to replace each block with `{ unimplemented!() }`, similar to `rustc`'s
+/// Try to replace each block with `{ }`, similar to `rustc`'s
 /// every body loops printer.
 
 use std::mem;
@@ -23,12 +23,13 @@ use std::mem;
 use syn::visit_mut::*;
 use quote::quote;
 
-pub fn clear_blocks<F: FnMut(&syn::File) -> Result<(),String>>(file: &mut syn::File, mut try_compile: F) {
+/// Just slightly simpler than unimplemented.
+pub fn empty_blocks<F: FnMut(&syn::File) -> Result<(),String>>(file: &mut syn::File, mut try_compile: F) {
     let mut visitor = BlockVisitor {
         backup: None,
         cur_index: 0,
         target_index: 1,
-        unimplemented: syn::parse2(quote!( { unimplemented!() } )).unwrap()
+        unimplemented: syn::parse2(quote!( { } )).unwrap()
     };
 
     loop {

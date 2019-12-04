@@ -18,7 +18,7 @@ use syn::punctuated::Punctuated;
 
 /// Try to remove each item.
 
-pub fn prune_items<F: FnMut(&syn::File) -> bool>(file: &mut syn::File, mut try_compile: F) {
+pub fn prune_items<F: FnMut(&syn::File) -> Result<(),String>>(file: &mut syn::File, mut try_compile: F) {
     let mut level = 0;
     let mut index = 0;
     loop {
@@ -31,7 +31,7 @@ pub fn prune_items<F: FnMut(&syn::File) -> bool>(file: &mut syn::File, mut try_c
             index = 0;
             continue;
         }
-        if !try_compile(&file) {
+        if let Err(_msg) = try_compile(&file) {
             *file = backup;
             index += 1;
         } else {

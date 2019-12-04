@@ -17,9 +17,10 @@
 
 /// Try to remove each `#[derive(...)]` attribute.
 
+use std::result::Result;
 use syn::{*, visit_mut::*};
 
-pub fn remove_derive_attrs<F: FnMut(&File) -> bool>(file: &mut File, mut try_compile: F) {
+pub fn remove_derive_attrs<F: FnMut(&File) -> Result<(),String>>(file: &mut File, mut try_compile: F) {
     let mut visitor = AttrContainerVisitor {
         backup: None,
         cur_index: 0,
@@ -37,7 +38,7 @@ pub fn remove_derive_attrs<F: FnMut(&File) -> bool>(file: &mut File, mut try_com
             break
         }
 
-        if try_compile(file) {
+        if let Ok(()) = try_compile(file) {
             // this change works, keep it!
             visitor.backup = None;
         }

@@ -21,18 +21,20 @@ fn run_test(dir: &str) {
     let mut path = tests_dir();
     path.push(dir);
 
+    let cmd = format!("{:?} -- test.sh input.rs", find_rust_reduce());
     let out = Command::new(find_rust_reduce())
-        .args(&["-1", "-o", "-"])
+        .args(&["-"])
         .args(&[path.join("test.sh"), path.join("input.rs")])
         .output()
         .unwrap();
 
     if !out.status.success() {
-        eprintln!("`rust-reduce` failed with {}", out.status);
+        eprintln!("`rust-reduce` {} failed with {}", cmd, out.status);
         eprintln!("{}", String::from_utf8(out.stderr).unwrap());
         panic!("Test failed");
     }
     let expected = fs::read_to_string(path.join("output.rs")).unwrap();
+    fs::write(path.join("actual.rs"), &out.stdout).unwrap();
     assert_eq!(String::from_utf8(out.stdout).unwrap(), expected);
 }
 
@@ -50,6 +52,7 @@ macro_rules! tests {
 tests!(
     futures_core
 );
+
 
 fn find_rust_reduce() -> PathBuf {
     let mut path = env::current_exe().unwrap();

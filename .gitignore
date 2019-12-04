@@ -1,3 +1,5 @@
 /Cargo.lock
 /target
+/.idea
+tags
 **/*.rs.bk

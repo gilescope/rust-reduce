@@ -11,5 +11,5 @@ repository = "https://github.com/jethrogb/rust-reduce"
 syn = { version = "0.15", features = ["full", "visit-mut", "extra-traits"] } # MIT/Apache-2.0
 syn-inline-mod = "0.2"                                                       # MIT
 quote = "0.6"                                                                # MIT/Apache-2.0
-tempfile = "3"                                                               # MIT/Apache-2.0
 clap = { version = "2.33", default-features = false }                        # MIT
+tempdir = "0.3"                                                              # MIT/Apache-2.0

@@ -16,10 +16,10 @@
 // along with rust-reduce.  If not, see <https://www.gnu.org/licenses/>.
 
 /// Try to remove each `#[doc]` attribute (this includes doc comments).
-
+use std::result::Result;
 use syn::{*, visit_mut::*};
 
-pub fn remove_doc_attrs<F: FnMut(&File) -> bool>(file: &mut File, mut try_compile: F) {
+pub fn remove_doc_attrs<F: FnMut(&File) -> Result<(),String>>(file: &mut File, mut try_compile: F) {
     let mut visitor = AttrContainerVisitor {
         backup: None,
         cur_index: 0,
@@ -37,7 +37,7 @@ pub fn remove_doc_attrs<F: FnMut(&File) -> bool>(file: &mut File, mut try_compil
             break
         }
 
-        if try_compile(file) {
+        if let Ok(()) = try_compile(file) {
             // this change works, keep it!
             visitor.backup = None;
         }

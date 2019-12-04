@@ -18,4 +18,6 @@
 pub mod prune_items;
 pub mod remove_derive_attrs;
 pub mod remove_doc_attrs;
+pub mod empty_blocks;
 pub mod clear_blocks;
+pub mod privatiser;
