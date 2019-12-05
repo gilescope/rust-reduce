@@ -75,17 +75,26 @@ pub fn reduce<R: Runnable>(runnable: R)
     // Ensure a successful file is written:
     try_compile(&inlined_file).unwrap();
 
+    if let Err(msg) = Command::new("cargo")
+        .args(vec!["fmt"])
+        .current_dir(&runnable.root())
+        .output() {
+        eprintln!("cargo fmt failed/not found so min unformatted. {}", msg);
+    }
+
     //Put the original one back...
-    let min = std::fs::read(runnable.get_path()).unwrap();
+    //let min = std::fs::read(runnable.get_path()).unwrap();
     let min_path = runnable.get_path()
         .with_extension("rs.min");
     println!("writing min to {:?}", &min_path);
-    std::fs::write(min_path, min).unwrap();
+    std::fs::copy(runnable.get_path(), min_path).unwrap();
+    //std::fs::write(min_path, min).unwrap();
 
     std::fs::write(runnable.get_path(), original).unwrap();
 }
 
 pub trait Runnable {
+    fn root(&self) -> &Path;
     fn get_path(&self) -> &Path;
     fn run(&self) -> Result<(), String>;
 }
@@ -96,6 +105,10 @@ pub struct TestScript<'me>{
 }
 
 impl <'me> Runnable for TestScript<'me> {
+    fn root(&self) -> &Path {
+        unimplemented!()
+    }
+
     fn get_path(&self) -> &Path {
         &self.path
     }
