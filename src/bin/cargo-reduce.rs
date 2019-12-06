@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::ffi::OsString;
+use std::ffi::{OsString};
 use std::process::Command;
-
 use clap::clap_app;
+
 use rust_reduce::Runnable;
 
 fn main() {
@@ -85,6 +85,7 @@ mod tests {
     use super::*;
     use tempdir::TempDir;
     use std::path::PathBuf;
+    use std::ffi::OsStr;
 
     fn home() -> PathBuf {
         Path::new(&std::env::var_os("HOME").unwrap_or_else(|| {
@@ -113,21 +114,18 @@ mod tests {
     }
 
 
+
     #[test]
     fn hello_main_works() {
         let loc = TempDir::new("reduce").unwrap();
         //path needs to be absolute as debugger seems to forget the path.
-        let cargo_path = home().join(&OsString::from(".cargo/bin/cargo"));
-        let mut cmd = std::process::Command::new(&cargo_path);
-        let cmd = cmd.args(vec!["new", "testy"]);
+        cargo(loc.path(), &vec!["new", "testy"]).unwrap();
 
-        cmd.current_dir(loc.path());
-        let _o = cmd.output().unwrap();
-        //println!("{}", String::from_utf8_lossy(&o.stdout));
-        //println!("{}", String::from_utf8_lossy(&o.stderr));
+
+
         let root = loc.path().join("testy");
-        let p = root.clone().join("src/main.rs");
 
+        let p = root.clone().join("src/main.rs");
         //tests run in parallel by default!
         //std::env::set_current_dir(root).unwrap();
 
@@ -141,7 +139,8 @@ pub fn main() {
         println!("Before: {} at {:?}", std::fs::read_to_string(&p).unwrap(), &p);
         let find = "Hello";
 
-        let runnable = Standard::new(vec![OsString::from(cargo_path),
+
+        let runnable = Standard::new(vec![OsString::from(home().join(&OsString::from(".cargo/bin/cargo"))),
                                           OsString::from("run")],
                                      find.to_owned(), root);
         assert_eq!(Ok(()), runnable.run());
@@ -149,6 +148,16 @@ pub fn main() {
         println!("After: {}", read_file(&p.with_extension("rs.min")));
 
         assert!(read_file(&p).contains(find));
+    }
+
+    fn cargo<I,S>(pwd: &Path, args: I) -> std::io::Result<std::process::ExitStatus>
+        where I: IntoIterator<Item=S>, S: AsRef<OsStr>
+    {
+        let cargo_path = home().join(&OsString::from(".cargo/bin/cargo"));
+        let mut cmd = std::process::Command::new(&cargo_path);
+        let cmd = cmd.args(args);
+        cmd.current_dir(pwd);
+        cmd.status()
     }
 
     fn read_file(path: &Path) -> String {
