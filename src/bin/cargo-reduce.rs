@@ -4,6 +4,31 @@ use std::process::Command;
 use clap::clap_app;
 
 use rust_reduce::Runnable;
+use serde_derive::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct Config {
+    workspace: Option<WorkspaceConfig>,
+    lib: Option<LibConfig>,
+    bin: Option<Vec<BinConfig>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WorkspaceConfig {
+    members: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LibConfig {
+    name: String,
+    path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BinConfig {
+    name: String,
+    path: String,
+}
 
 fn main() {
     let matches = clap_app!(("cargo-reduce") =>
@@ -17,13 +42,27 @@ The original file will be overwritten with the smallest interesting reduced vers
 
 The original file may refer to modules in different files, these will be inlined and reduced along with the main file.")
     ).get_matches();
+    //TODO recurse?
+    let decoded: Config = toml::from_str(&std::fs::read_to_string("Cargo.toml")
+        .expect("Cargo.toml file not found"))
+        .expect("Can't parse Cargo.toml");
+    if let Some(cfg) = decoded.workspace {
+        println!("Found workspace: {:?}", &cfg.members);
+    }
+
+
+    //let mut h = std::collections::HashMap::new();
+    //h.insert("a", "b");
+    //h.insert("c", "d");
+    //panic!("does it break");
 
     let find = matches.value_of_lossy("FIND").expect("string to search for").to_owned();
     let mut cmd = vec![matches.value_of_os("CMD").expect("validated").to_owned()];
     let iter = matches.values_of_os("ARGS").expect("validated").map(ToOwned::to_owned);
     cmd.extend(iter);
 
-    let runnable = Standard::new(cmd, find.to_string(), std::env::current_dir().unwrap());
+    let runnable = Standard::new(cmd, find.to_string(),
+                                 std::env::current_dir().unwrap());
 
     rust_reduce::reduce( runnable);
 }
@@ -36,15 +75,61 @@ struct Standard {
     find: String
 }
 
-impl Standard {
-    fn new(cmd: Vec<OsString>, find: String, root_dir: PathBuf) -> Standard {
-        let file: OsString = if root_dir.join("src/main.rs").exists() {
-            OsString::from("src/main.rs")//todo naive
-        } else {
-            OsString::from("src/lib.rs")
-        };
+/// Recursively list all entry points. (for now excluding examples)
+fn entry_points(base_path: PathBuf, results: &mut Vec<PathBuf>) {
+    let cargo_toml = base_path.join("Cargo.toml");
+    let cargo_toml : Config = toml::from_str(&std::fs::read_to_string(cargo_toml)
+        .unwrap()).unwrap();
 
-        Standard { file: root_dir.join(file), cmd, find, root_dir }
+    let initial = results.len();
+
+    if let Some(lib) = cargo_toml.lib {
+        results.push(base_path.join(lib.path));
+    }
+
+    if let Some(bin) = cargo_toml.bin {
+        for b in bin {
+            results.push(base_path.join(b.path));
+        }
+    }
+
+    if let Some(workspace) = cargo_toml.workspace {
+        for krate in workspace.members {
+            entry_points(base_path.join(krate), results )
+        }
+    }
+
+    if initial == results.len()
+    {
+        //Assume main
+        results.push(base_path.join("src/main.rs"));
+    }
+}
+
+impl Standard {
+
+    fn new(cmd: Vec<OsString>, find: String, root_dir: PathBuf) -> Standard {
+        //todo: for now minimise first thing.
+
+        let mut results = Vec::new();
+        entry_points(root_dir.clone(), &mut results);
+
+//        let file: OsString = if Some(lib) = config.lib {
+//            OsString::from(lib.path)
+//
+//        } else if let Some(workspace) = config.worspace {
+//            let cargo_toml = format!("{}/Cargo.toml", workspace.members[0]);
+//
+//            let cargo_toml = toml::from_str(&std::fs::read_to_string(cargo_toml)
+//                .unwrap()).unwrap();
+//        } else {
+//            assert!(root_dir.join("src/main.rs").exists());
+//            OsString::from("src/main.rs")
+//        };
+        println!("Found entry points: {:#?}, picking first", results);
+
+
+        Standard { file: results[0].clone(), cmd, find, root_dir }
     }
 }
 
@@ -63,7 +148,7 @@ impl Runnable for Standard {
             .args(args)
             .current_dir(&self.root_dir)
             .output();
-            if let Ok(out) = out {
+        if let Ok(out) = out {
             if String::from_utf8_lossy(&out.stdout).contains(&self.find) {
                 return Ok(());
             }
@@ -71,12 +156,12 @@ impl Runnable for Standard {
             {
                 return Ok(());
             }
-            return Err(format!("\nCould not find `{}` in:\nout:\n{}\nerr:\n{}",
+            Err(format!("\nCould not find `{}` in:\nout:\n{}\nerr:\n{}",
                                &self.find, String::from_utf8_lossy(&out.stdout),
-                               String::from_utf8_lossy(&out.stderr)));
+                               String::from_utf8_lossy(&out.stderr)))
         } else {
-            return Err(format!("Failed to execute: {:#?}", out))
-        }
+            println!("Couldn't find program to execute");
+            Err(format!("Failed to execute: {:#?}", out)) }
     }
 }
 
@@ -86,6 +171,7 @@ mod tests {
     use tempdir::TempDir;
     use std::path::PathBuf;
     use std::ffi::OsStr;
+    use std::error::Error;
 
     fn home() -> PathBuf {
         Path::new(&std::env::var_os("HOME").unwrap_or_else(|| {
@@ -94,7 +180,7 @@ mod tests {
             s
         })).to_owned()
     }
-
+    
     #[test]
     fn test_find() {
         let r = Standard::new(vec![OsString::from("echo"),
@@ -113,41 +199,14 @@ mod tests {
         assert!(r.run().is_err());
     }
 
+    fn reduce(root: PathBuf, find: &str, cargo_arg: &str) {
+        let args = vec![
+            OsString::from(home().join(&OsString::from(".cargo/bin/cargo"))),
+            OsString::from(cargo_arg)];
 
-
-    #[test]
-    fn hello_main_works() {
-        let loc = TempDir::new("reduce").unwrap();
-        //path needs to be absolute as debugger seems to forget the path.
-        cargo(loc.path(), &vec!["new", "testy"]).unwrap();
-
-
-
-        let root = loc.path().join("testy");
-
-        let p = root.clone().join("src/main.rs");
-        //tests run in parallel by default!
-        //std::env::set_current_dir(root).unwrap();
-
-        std::fs::write(&p, r#"
-fn unused() {}
-
-pub fn main() {
-    println!("Hello, world!");
-}
-        "#).unwrap();
-        println!("Before: {} at {:?}", std::fs::read_to_string(&p).unwrap(), &p);
-        let find = "Hello";
-
-
-        let runnable = Standard::new(vec![OsString::from(home().join(&OsString::from(".cargo/bin/cargo"))),
-                                          OsString::from("run")],
-                                     find.to_owned(), root);
+        let runnable = Standard::new(args, find.to_owned(), root);
         assert_eq!(Ok(()), runnable.run());
         rust_reduce::reduce(runnable);
-        println!("After: {}", read_file(&p.with_extension("rs.min")));
-
-        assert!(read_file(&p).contains(find));
     }
 
     fn cargo<I,S>(pwd: &Path, args: I) -> std::io::Result<std::process::ExitStatus>
@@ -167,68 +226,58 @@ pub fn main() {
         }
     }
 
+    type Test = Result<(), Box<dyn Error>>;
+
+    /// path needs to be absolute as debugger seems to forget the path.
+    /// tests run in parallel by default! - don't rely on pwd.
     #[test]
-    fn hello_lib_works() {
-        // Note: each test gets run in parallel and thus you can't just switch
-        // current process' working dir.
-
-        let loc = TempDir::new("reduce").unwrap();
-        let mut cmd = std::process::Command::new(home().join(".cargo/bin/cargo"));
-        let cmd = cmd.args(vec!["new", "testy", "--lib"]);
-
-        cmd.current_dir(loc.path());
-        //let _res = cmd.output();
-        cmd.status().unwrap();
+    fn hello_main_works() -> Test {
+        let loc = TempDir::new("reduce")?;
         let root = loc.path().join("testy");
-        let p = root.clone().join("src/lib.rs");
+        let main_file = root.join("src/main.rs");
 
-        //std::env::set_current_dir(root).unwrap();
+        cargo(loc.path(), &vec!["new", "testy"])?;
 
-        println!("Before: {}", std::fs::read_to_string(&p).unwrap());
-        let find = "test result: ok";
+        std::fs::write(&main_file, r#"
+fn unused() {}
 
-        let runnable = Standard::new(vec![home().join(".cargo/bin/cargo").into_os_string(),
-                                          OsString::from("test")],
-                                     find.to_owned(), root);
-        assert_eq!(Ok(()), runnable.run());
-        rust_reduce::reduce(runnable);
-        let minimised = std::fs::read_to_string(&p.with_extension("rs.min")).unwrap();
-        println!("After: {}", minimised);
+pub fn main() {
+    println!("Hello, world!");
+}
+        "#)?;
 
-        assert_eq!(minimised.trim(), r#""#);
+        let find = "Hello";
+        reduce(root, find, "run");
+
+        assert!(read_file(&main_file.with_extension("rs.min")).contains(find));
+        Ok(())
     }
 
     #[test]
-    fn hello_lib_works_min_to_1_test() {
-        let loc = TempDir::new("reduce").unwrap();
-        let mut cmd = std::process::Command::new(home()
-            .join(".cargo/bin/cargo"));
-
-        let cmd = cmd.args(vec!["new", "testy", "--lib"]);
-
-        let base = loc.path().canonicalize().unwrap();
-        println!("base {:?}", base);
-        cmd.current_dir(base);
-        //let res = cmd.output();
-        let _o = cmd.output().unwrap();
+    fn hello_lib_works() -> Test {
+        let loc = TempDir::new("reduce")?;
         let root = loc.path().join("testy");
-        let p = root.clone().join("src/lib.rs");
+        let p = root.join("src/lib.rs");
 
-        //std::env::set_current_dir(root).unwrap();
+        cargo(loc.path(), &vec!["new", "testy", "--lib"])?;
 
-        println!("Before: {}", std::fs::read_to_string(&p).unwrap());
-        let find = "test result: ok. 1 passed";
+        reduce(root, "test result: ok","test");
 
-        let runnable = Standard::new(vec![
-//            home().join("projects/replay/target/debug/replay").into_os_string(),
-home().join(".cargo/bin/cargo").into_os_string(),
-OsString::from("test")],
-                                     find.to_owned(), root);
-        assert_eq!(Ok(()), runnable.run());
-        rust_reduce::reduce(runnable);
+        assert_eq!(std::fs::read_to_string(&p.with_extension("rs.min"))?.trim(), r#""#);
+        Ok(())
+    }
+
+    #[test]
+    fn hello_lib_works_min_to_1_test() -> Test {
+        let loc = TempDir::new("reduce")?;
+        cargo(loc.path(), &vec!["new", "testy", "--lib"])?;
+
+        let root = loc.path().join("testy");
+        let p = root.join("src/lib.rs");
+
+        reduce(root, "test result: ok. 1 passed","test");
         let minimised = std::fs::read_to_string(
-            &p.with_extension("rs.min")).unwrap();
-        println!("After: {}", minimised);
+            &p.with_extension("rs.min"))?;
 
         assert_eq!(minimised, r#"#[cfg(test)]
 mod tests {
@@ -236,27 +285,20 @@ mod tests {
     fn it_works() {}
 }
 "#);
+        Ok(())
     }
 
     /// We need to make sure we inline things like this otherwise code doesn't compile:
     /// #[cfg(test)]
     /// mod test_utils;
     #[test]
-    fn test_mod_pulls_in_a_mod_with_cfg_test_attribute_on_it() {
-        let loc = TempDir::new("reduce").unwrap();
-        let mut cmd = std::process::Command::new(home()
-            .join(".cargo/bin/cargo"));
-
-        let cmd = cmd.args(vec!["new", "testy", "--lib"]);
-
-        let base = loc.path().canonicalize().unwrap();
-        println!("base {:?}", base);
-        cmd.current_dir(base);
-        //let res = cmd.output();
-        let _o = cmd.output().unwrap();
+    fn test_mod_pulls_in_a_mod_with_cfg_test_attribute_on_it() -> Test {
+        let loc = TempDir::new("reduce")?;
         let root = loc.path().join("testy");
 
-        std::fs::write(& root.clone().join("src/lib.rs"), r#"
+        cargo(loc.path(), &vec!["new", "testy", "--lib"])?;
+
+        std::fs::write(& root.join("src/lib.rs"), r#"
 #[cfg(test)]
 mod test_utils;
 
@@ -269,32 +311,18 @@ mod tests {
         assert_eq!("wonderful", test_utils::util());
     }
 }
-        "#).unwrap();
-        std::fs::write(& root.clone().join("src/test_utils.rs"), r#"
+        "#)?;
+        std::fs::write(& root.join("src/test_utils.rs"), r#"
 pub fn util() -> &'static str {
     "wonderful"
 }
-        "#).unwrap();
+        "#)?;
 
-        let p = root.clone().join("src/lib.rs");
+        let p = root.join("src/lib.rs");
 
-        //std::env::set_current_dir(root).unwrap();
-
-        println!("Before: {}", std::fs::read_to_string(&p).unwrap());
-        let find = "test result: ok. 1 passed";
-
-        let runnable = Standard::new(vec![
-//            home().join("projects/replay/target/debug/replay").into_os_string(),
-home().join(".cargo/bin/cargo").into_os_string(),
-OsString::from("test")],
-                                     find.to_owned(), root);
-        assert_eq!(Ok(()), runnable.run());
-        rust_reduce::reduce(runnable);
-        let minimised = std::fs::read_to_string(
-            &p.with_extension("rs.min")).unwrap();
-        println!("After: {}", minimised);
-
-        assert_eq!(minimised, r#"#[cfg(test)]
+        reduce(root, "test result: ok. 1 passed","test");
+        assert_eq!(std::fs::read_to_string(
+            &p.with_extension("rs.min"))?, r#"#[cfg(test)]
 mod test_utils {
     pub fn util() -> &'static str {
         unimplemented!()
@@ -307,5 +335,6 @@ mod tests {
     fn it_works() {}
 }
 "#);
+        Ok(())
     }
 }

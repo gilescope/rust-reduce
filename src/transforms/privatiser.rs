@@ -54,6 +54,14 @@ fn privatise_item(item: &mut Option<&mut syn::Item>) -> bool {
                 return true;
             }
         },
+        Some(syn::Item::Type(tipe)) => {
+            if let syn::Visibility::Inherited = tipe.vis {
+                //private already
+            } else {
+                tipe.vis = syn::Visibility::Inherited;
+                return true;
+            }
+        }
         _ => {}
     }
     false

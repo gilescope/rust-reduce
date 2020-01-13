@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(OSX) Launch",
+            "type": "lldb",
+            "request": "launch",
+
+            "cargo": {
+                "args": ["build", "--bin=cargo-reduce"], // Cargo command line to build the debug target
+                // "args": ["test", "--no-run", "--lib"],
+                "filter": { // Filter applied to compilation artifacts (optional)
+                    "name": "cargo-reduce",
+                    "kind": "bin"
+                }, 
+            },
+            "args": [ "soemthing", "arg2", "find"],
+            "cwd": "${workspaceRoot}",
+            "sourceLanguages": ["rust"],
+        }
+    ]
+}

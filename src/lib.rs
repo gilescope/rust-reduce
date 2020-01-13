@@ -46,12 +46,13 @@ pub fn reduce<R: Runnable>(runnable: R)
             }
             std::process::exit(1);
         },
-        Err(_) => unimplemented!("This wasn't supposed to happen.")
+        Err(err) => unimplemented!("This wasn't supposed to happen. {:?}", err)
     };
 
     let mut try_compile = |reduced_syn_file: &syn::File| {
-        let mut file = std::fs::File::create(runnable.get_path())
-            .expect(runnable.get_path().to_str().unwrap());
+        let path = runnable.get_path();
+        let mut file = std::fs::File::create(path)
+            .unwrap_or_else(|_| panic!("{:?}", path));
         write!(file, "{}", reduced_syn_file.into_token_stream()).unwrap();
         runnable.run()
     };
@@ -84,13 +85,15 @@ pub fn reduce<R: Runnable>(runnable: R)
 
     //Put the original one back...
     //let min = std::fs::read(runnable.get_path()).unwrap();
-    let min_path = runnable.get_path()
-        .with_extension("rs.min");
-    println!("writing min to {:?}", &min_path);
-    std::fs::copy(runnable.get_path(), min_path).unwrap();
-    //std::fs::write(min_path, min).unwrap();
 
-    std::fs::write(runnable.get_path(), original).unwrap();
+//    let min_path = runnable.get_path()
+//        .with_extension("rs");
+//    println!("writing min to {:?}", &min_path);
+//    std::fs::copy(runnable.get_path(), min_path).unwrap();
+//
+//    //std::fs::write(min_path, min).unwrap();
+//
+//    std::fs::write(runnable.get_path(), original).unwrap();
 }
 
 pub trait Runnable {
